@@ -1,0 +1,60 @@
+include:
+  - project: sre-lm/ci-cd-templates
+    file: jobs/env.yaml
+    
+stages:
+  - e2e
+  - report
+
+variables:
+  ENVIRONMENT:
+    value: "rc"
+    description: "The end-to-end target. Set to 'rc' by default."
+  E2E_FOLDER:
+    value: "my-test"
+    description: "The end-to-end path. See /e2e/<your_test_suite>. Run a set of test files"
+  SLACK_CHANNEL:
+    value: "end-to-end-test"
+    description: "Public Slack channel to publish the end-to-end test result."
+  SLACK_MAX_NUM_FAILURE_TO_SHOW:
+    value: "10"
+    description: "Limits the number of failures shown in the Slack message."
+  TEST_MESSAGE_NOTE_TO_SLACK:
+    value: "end-to-end test..."  
+    description: "The message note to show in slack"
+
+end-to-end-job:
+  stage: e2e
+  image: mcr.microsoft.com/playwright:v1.30.0-focal
+  only:
+    - web # see more https://docs.gitlab.com/ee/ci/yaml/#only--except
+  # when: manual
+  extends:
+    - .basejob
+  script:
+    - npm ci
+    - npx playwright install --with-deps
+    - SLACK_BOT_USER_OAUTH_TOKEN=$SLACK_BOT_USER_OAUTH_TOKEN npx playwright test $E2E_FOLDER
+  artifacts:
+    when: always
+    expire_in: 2 weeks
+    paths:
+      - playwright-report/
+      - test-results/
+      - results.xml
+    reports:
+      junit: test-results/report/results.xml
+  after_script:
+    - >
+      if [ $CI_JOB_STATUS != "failed" ]; then
+        echo -e "HTML artifact URL: $CI_JOB_URL/artifacts/file/test-results/report/index.html"
+      fi
+  tags: [lineman, build]
+
+publish-test-report:
+  stage: report
+  only:
+    - web # see more https://docs.gitlab.com/ee/ci/yaml/#only--except
+  # when: manual
+  extends:
+    - .basejob
